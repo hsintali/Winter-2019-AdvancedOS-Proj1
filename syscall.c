@@ -103,6 +103,10 @@ extern int sys_unlink(void);
 extern int sys_wait(void);
 extern int sys_write(void);
 extern int sys_uptime(void);
+extern int sys_info(void); // cs202
+extern int sys_settickets(void); // cs202
+extern int sys_showpinfo(void); // cs202
+extern int sys_setstride(void); //cs202
 
 static int (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -126,6 +130,10 @@ static int (*syscalls[])(void) = {
 [SYS_link]    sys_link,
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
+[SYS_info]    sys_info, // cs202
+[SYS_settickets] sys_settickets, // cs202
+[SYS_showpinfo] sys_showpinfo, // cs202
+[SYS_setstride] sys_setstride, // cs202
 };
 
 void
@@ -133,7 +141,9 @@ syscall(void)
 {
   int num;
   struct proc *curproc = myproc();
-
+  
+  ++curproc->sysCallCount; // cs202
+  
   num = curproc->tf->eax;
   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
     curproc->tf->eax = syscalls[num]();

@@ -20,3 +20,7 @@
 #define SYS_link   19
 #define SYS_mkdir  20
 #define SYS_close  21
+#define SYS_info   22 // cs202
+#define SYS_settickets 23 // cs202
+#define SYS_showpinfo 24 // cs202
+#define SYS_setstride 25 // cs202

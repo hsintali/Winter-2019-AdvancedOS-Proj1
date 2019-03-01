@@ -49,6 +49,14 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  
+  int sysCallCount;            // cs202 Count of system calls
+  int tickets;                 // cs202 Tickets fot lottery scheduling
+  int runTimes;                // cs202 How many times the process run in CPU 
+  int waitingTimes;            // cs202 How many times the process waiting for execution
+  _Bool isRun;                 // cs202 Is the porcess runing in CPU
+  int stride;    	           // cs202 Stride for stride scheduling
+  int pass;		               // cs202 Pass for stride scheduling
 };
 
 // Process memory is laid out contiguously, low addresses first:
@@ -56,3 +64,19 @@ struct proc {
 //   original data and bss
 //   fixed-size stack
 //   expandable heap
+
+// cs202 ----->
+struct pstate
+{
+	enum procstate state[NPROC];
+	int pid[NPROC];
+	char *name[NPROC];
+	int tickets[NPROC];
+	int runTimes[NPROC];
+	int waitingTimes[NPROC];
+	_Bool isRun[NPROC];
+	int totalTickets;
+	int stride[NPROC];
+	int pass[NPROC];
+};
+// cs202 <-----

@@ -29,3 +29,7 @@ SYSCALL(getpid)
 SYSCALL(sbrk)
 SYSCALL(sleep)
 SYSCALL(uptime)
+SYSCALL(info) # cs202
+SYSCALL(settickets) # cs202
+SYSCALL(showpinfo) # cs202
+SYSCALL(setstride) # cs202

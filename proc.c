@@ -5,12 +5,17 @@
 #include "mmu.h"
 #include "x86.h"
 #include "proc.h"
+#include "rand.h" // cs202
 #include "spinlock.h"
 
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
 } ptable;
+
+int totalTickets; // cs202
+const int stride1 = 10000; // cs202
+int isStride = 0; // cs202
 
 static struct proc *initproc;
 
@@ -19,6 +24,199 @@ extern void forkret(void);
 extern void trapret(void);
 
 static void wakeup1(void *chan);
+
+// cs202 ----->
+int
+info(int type, int val)
+{
+	if(type == 1)
+		cprintf("\n There are %d processes in the system.\n\n", val);
+	else if(type == 2)
+		cprintf("\n There are total %d system calls that a process has done so far.\n\n", val);
+	else if(type == 3)
+		cprintf("\n There are %d memory pages used by the current process.\n\n", val);
+
+	return 0;	
+}
+
+int
+getProcCount(void)
+{
+	struct proc *p;
+	int count = 0;
+	
+	acquire(&ptable.lock);
+	
+	for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+	{
+		if(p->state != UNUSED) ++count;
+	}
+	
+	release(&ptable.lock);
+  
+	return count;	
+}
+
+int
+getSysCallCount(void)
+{
+	struct proc *curproc = myproc();
+	
+	acquire(&ptable.lock);
+	
+	int count = count = curproc->sysCallCount;
+	
+	release(&ptable.lock);
+  
+	return count;	
+}
+
+int
+getPageSize(void)
+{
+	struct proc *curproc = myproc();
+	
+	int count = 0;
+
+	uint i;
+	acquire(&ptable.lock);
+
+	for(i = 0; i < curproc->sz; i+= sizeof(pte_t))
+	{
+		if((char *)curproc->pgdir[i] == curproc->kstack)
+			break;
+		
+		if(curproc->pgdir[i] & PTE_P)
+			++count;
+	}
+
+	release(&ptable.lock);
+  
+	return count;	
+}
+
+void
+setTickets(struct proc* p, int val)
+{
+	p->tickets = val;
+	client_init(p);
+}
+
+void
+showProcesses(void)
+{
+	struct proc* p;
+	struct pstate pStates;
+	
+	acquire(&ptable.lock);
+	for(p = ptable.proc; p != &(ptable.proc[NPROC]); p++)
+	{
+		const int index = p - ptable.proc;
+		if(p->state != UNUSED)
+		{
+			pStates.pid[index] = p->pid;
+			pStates.runTimes[index] = p->runTimes;
+			pStates.waitingTimes[index] = p->waitingTimes;
+			pStates.tickets[index] = p->tickets;
+			pStates.isRun[index] = p->isRun;
+			pStates.state[index] = p->state;
+			pStates.name[index] = p->name;
+			pStates.stride[index] = p->stride;
+			pStates.pass[index] = p->pass;
+		}
+	}	
+	pStates.totalTickets = totalTickets;
+
+	cprintf("\f");
+	if(!isStride)
+	{
+		cprintf("Using Lottery Scheduling:\n");
+	}
+	else
+	{
+		cprintf("Using Stride Scheduling:\n");
+	}
+	
+	for(p = ptable.proc; p != &(ptable.proc[NPROC]); p++)
+	{
+		const int index = p - ptable.proc;
+		if(pStates.pid[index] != 0 && pStates.name[index] == p->name && pStates.state[index] != SLEEPING && pStates.state[index] != ZOMBIE)
+		{
+			if(!isStride)
+			{
+				cprintf("Pid:%d (%s)\t tickets:%d\t executedTimes:%d\t state:%d\t running:%d\t waitingTimes:%d \n",
+				pStates.pid[index], pStates.name[index], pStates.tickets[index], pStates.runTimes[index], pStates.state[index], pStates.isRun[index], pStates.waitingTimes[index]);
+			}
+			else
+			{			
+				cprintf("Pid:%d (%s)\t tickets:%d\t executedTimes:%d\t state:%d\t running: %d\t waitingTimes:%d\t stride:%d\t pass:%d \n",
+				pStates.pid[index], pStates.name[index], pStates.tickets[index], pStates.runTimes[index], pStates.state[index], pStates.isRun[index], pStates.waitingTimes[index], pStates.stride[index], pStates.pass[index]);
+			}
+		}
+	}
+	
+	release(&ptable.lock);
+}
+
+void
+client_init(struct proc* p)
+{
+	if(p->tickets == 0)
+	{
+		p->stride = 0;
+		p->pass = -1;
+	}
+	else
+	{
+		p->stride = stride1/p->tickets;
+		p->pass = p->stride;
+	}
+}
+
+void
+client_update(struct proc* p)
+{
+        p->pass += p->stride;
+}
+
+void
+setStride(int val)
+{
+	acquire(&ptable.lock);
+	isStride = val;
+	release(&ptable.lock);
+	
+	if(val)
+	{
+		cprintf("Set scheduler to \"Stride\"!\n");
+	}
+	else
+	{
+		cprintf("Set scheduler to \"Lottery\"!\n");
+	}
+}
+
+void
+updatestatistics()
+{
+  struct proc *p;
+
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+  {
+    switch(p->state)
+	{
+      case RUNNABLE:
+        ++p->waitingTimes;
+        break;
+      case RUNNING:
+        ++p->runTimes;
+        break;
+      default:
+        ;
+    }
+  }
+}
+// cs202 <-----
 
 void
 pinit(void)
@@ -199,7 +397,15 @@ fork(void)
   np->sz = curproc->sz;
   np->parent = curproc;
   *np->tf = *curproc->tf;
-
+     
+  // cs202 ----->
+  np->sysCallCount = 0;
+  setTickets(np, 10);
+  np->runTimes = 0; 
+  np->waitingTimes = 0;
+  np->isRun = 0;
+  // cs202 <-----
+ 
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
 
@@ -217,7 +423,7 @@ fork(void)
   np->state = RUNNABLE;
 
   release(&ptable.lock);
-
+  
   return pid;
 }
 
@@ -260,7 +466,9 @@ exit(void)
         wakeup1(initproc);
     }
   }
-
+  
+  setTickets(curproc, 0); // cs202
+  
   // Jump into the scheduler, never to return.
   curproc->state = ZOMBIE;
   sched();
@@ -295,6 +503,11 @@ wait(void)
         p->name[0] = 0;
         p->killed = 0;
         p->state = UNUSED;
+		p->sysCallCount = 0; // cs202
+		p->runTimes = 0; // cs202
+		setTickets(p, 0); // cs202
+		p->waitingTimes = 0; // cs202
+		p->isRun = 0; // cs202
         release(&ptable.lock);
         return pid;
       }
@@ -324,17 +537,57 @@ scheduler(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
+  int min_pass = 2 * stride1; // cs202
   c->proc = 0;
+  
+  // cs202 ----->
+  acquire(&ptable.lock);
+  setTickets(ptable.proc, 10);
+  release(&ptable.lock);
+  // cs202 <-----
   
   for(;;){
     // Enable interrupts on this processor.
     sti();
+	
+	// cs202 ----->
+	acquire(&ptable.lock);
+    totalTickets = 0;
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+    {
+		if(p->state == RUNNABLE)
+	    {
+			totalTickets += p->tickets;
+			
+			if(min_pass > p->pass && p->pass > 0)
+				min_pass = p->pass+1;
+	    }
+    }
+    release(&ptable.lock);
+
+	const int winner = random_at_most(totalTickets);
+	int ticketCount = 0;
+	// cs202 <-----
 
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
       if(p->state != RUNNABLE)
         continue;
+	
+	  // cs202 ----->
+	  ticketCount += p->tickets;
+	  if(!isStride) // Using Lottery
+	  {
+		  if(ticketCount < winner)
+			  continue;
+	  }
+	  else // Using Stride
+	  {
+		  if(p->pass > min_pass) 
+			  continue;
+	  }
+	  // cs202 <-----
 
       // Switch to chosen process.  It is the process's job
       // to release ptable.lock and then reacquire it
@@ -343,15 +596,29 @@ scheduler(void)
       switchuvm(p);
       p->state = RUNNING;
 
+	  // cs202 ----->
+	  p->isRun = 1;
+	  updatestatistics();
+	  client_update(p);
+	  // cs202 <-----
+	  
       swtch(&(c->scheduler), p->context);
+	  
+	  // cs202 ----->
+	  p->isRun = 0;
+	  // cs202 <-----	
+			
       switchkvm();
 
       // Process is done running for now.
       // It should have changed its p->state before coming back.
       c->proc = 0;
+	  
+	  break; // cs202
     }
-    release(&ptable.lock);
+	min_pass += stride1; // cs202
 
+    release(&ptable.lock);
   }
 }
 

@@ -120,6 +120,16 @@ void            userinit(void);
 int             wait(void);
 void            wakeup(void*);
 void            yield(void);
+int             info(int type, int val); // cs202
+int             getProcCount(void); // cs202
+int             getSysCallCount(void); // cs202
+int             getPageSize(void); // cs202
+void            setTickets(struct proc* p, int val); // cs202
+void            showProcesses(); // cs202
+void		    client_init(struct proc* p); // cs202
+void 		    client_update(struct proc* p); // cs202
+void            setStride(int val); // cs202
+void            updatestatistics(void); // cs202
 
 // swtch.S
 void            swtch(struct context**, struct context*);
